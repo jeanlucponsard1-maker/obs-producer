@@ -1,0 +1,1668 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OBS PRODUCER — Control Room</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow+Condensed:wght@300;400;500;600;700;900&family=Barlow:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0a0b0d;
+  --bg2: #111318;
+  --bg3: #181c22;
+  --bg4: #1e2330;
+  --border: #252c3a;
+  --border-active: #2e3d5a;
+  --accent: #e8483c;
+  --accent2: #f97316;
+  --live: #22c55e;
+  --live-glow: rgba(34,197,94,0.25);
+  --rec: #e8483c;
+  --warn: #f59e0b;
+  --text: #e8eaf0;
+  --text2: #8a9ab8;
+  --text3: #4a5470;
+  --mono: 'Share Tech Mono', monospace;
+  --head: 'Barlow Condensed', sans-serif;
+  --body: 'Barlow', sans-serif;
+  --panel-radius: 6px;
+  --red: #e8483c;
+  --green: #22c55e;
+  --blue: #3b82f6;
+  --dim: rgba(232,72,60,0.12);
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: var(--body); }
+
+/* SCANLINE OVERLAY */
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  background: repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(0,0,0,0.06) 3px, rgba(0,0,0,0.06) 4px);
+  pointer-events: none; z-index: 9999;
+}
+
+/* TOPBAR */
+#topbar {
+  height: 44px; display: flex; align-items: center; justify-content: space-between;
+  background: var(--bg2); border-bottom: 1px solid var(--border);
+  padding: 0 16px; position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+}
+#topbar-left { display: flex; align-items: center; gap: 16px; }
+#logo { font-family: var(--head); font-size: 22px; font-weight: 900; letter-spacing: 0.1em; color: var(--accent); text-transform: uppercase; }
+#logo span { color: var(--text2); font-weight: 300; }
+#status-bar { display: flex; gap: 12px; align-items: center; }
+.status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text3); }
+.status-dot.live { background: var(--live); box-shadow: 0 0 8px var(--live-glow); animation: pulse 2s infinite; }
+.status-dot.rec { background: var(--rec); animation: pulse 1.5s infinite; }
+@keyframes pulse { 0%,100%{ opacity:1 } 50%{ opacity:.4 } }
+.status-label { font-family: var(--head); font-size: 11px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--text2); }
+#clock { font-family: var(--mono); font-size: 14px; color: var(--text2); letter-spacing: .05em; }
+#timecode { font-family: var(--mono); font-size: 13px; color: var(--accent2); letter-spacing: .08em; background: rgba(249,115,22,.1); padding: 2px 8px; border-radius: 3px; }
+#topbar-right { display: flex; align-items: center; gap: 8px; }
+.top-btn { font-family: var(--head); font-size: 12px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase;
+  padding: 5px 14px; border-radius: 4px; border: 1px solid var(--border); background: transparent; color: var(--text2); cursor: pointer; transition: all .15s; }
+.top-btn:hover { border-color: var(--border-active); color: var(--text); background: var(--bg3); }
+.top-btn.connect { border-color: var(--accent); color: var(--accent); }
+.top-btn.connect:hover { background: var(--accent); color: #fff; }
+.top-btn.connected { border-color: var(--live); color: var(--live); }
+
+/* WORKSPACE */
+#workspace {
+  position: fixed; top: 44px; left: 0; right: 0; bottom: 0;
+  overflow: hidden; background: var(--bg);
+}
+
+/* PANELS */
+.panel {
+  position: absolute; background: var(--bg2); border: 1px solid var(--border);
+  border-radius: var(--panel-radius); display: flex; flex-direction: column;
+  box-shadow: 0 4px 20px rgba(0,0,0,.5); min-width: 160px; min-height: 120px; overflow: hidden;
+}
+.panel.dragging { opacity: .9; border-color: var(--border-active); box-shadow: 0 8px 40px rgba(0,0,0,.7); z-index: 500 !important; }
+.panel-header {
+  height: 32px; display: flex; align-items: center; justify-content: space-between;
+  padding: 0 10px; background: var(--bg3); border-bottom: 1px solid var(--border);
+  cursor: grab; user-select: none; flex-shrink: 0;
+}
+.panel-header:active { cursor: grabbing; }
+.panel-title { font-family: var(--head); font-size: 11px; font-weight: 700; letter-spacing: .18em; text-transform: uppercase; color: var(--text2); display: flex; align-items: center; gap: 6px; }
+.panel-title-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
+.panel-actions { display: flex; gap: 4px; }
+.panel-btn { width: 20px; height: 20px; border-radius: 3px; border: none; background: transparent; color: var(--text3); cursor: pointer; font-size: 12px; display: flex; align-items: center; justify-content: center; transition: all .1s; }
+.panel-btn:hover { background: var(--border); color: var(--text); }
+.panel-body { flex: 1; overflow-y: auto; padding: 10px; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+.panel-body::-webkit-scrollbar { width: 4px; }
+.panel-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+/* RESIZE HANDLE */
+.resize-handle {
+  position: absolute; bottom: 0; right: 0; width: 14px; height: 14px; cursor: se-resize;
+  background: linear-gradient(135deg, transparent 50%, var(--border) 50%, var(--border) 60%, transparent 60%, transparent 70%, var(--border) 70%, var(--border) 80%, transparent 80%);
+}
+
+/* SCENE GRID */
+.scene-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 6px; }
+.scene-card {
+  background: var(--bg3); border: 1px solid var(--border); border-radius: 4px;
+  padding: 10px 10px 8px; cursor: pointer; transition: all .12s; position: relative; overflow: hidden;
+}
+.scene-card:hover { border-color: var(--border-active); background: var(--bg4); }
+.scene-card.active { border-color: var(--live); background: rgba(34,197,94,.08); }
+.scene-card.preview { border-color: var(--blue); background: rgba(59,130,246,.08); }
+.scene-card.transition-out { animation: sceneSwitch .2s ease; }
+@keyframes sceneSwitch { 0%{ opacity:1 } 50%{ opacity:.4 } 100%{ opacity:1 } }
+.scene-thumb {
+  width: 100%; aspect-ratio: 16/9; background: var(--bg); border-radius: 3px; margin-bottom: 8px;
+  display: flex; align-items: center; justify-content: center; color: var(--text3); font-size: 10px;
+  font-family: var(--mono); overflow: hidden; position: relative;
+}
+.scene-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.scene-name { font-family: var(--head); font-size: 12px; font-weight: 600; letter-spacing: .05em; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.scene-badge { position: absolute; top: 5px; right: 5px; font-family: var(--head); font-size: 9px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; padding: 2px 5px; border-radius: 2px; }
+.badge-live { background: var(--live); color: #000; }
+.badge-pvw { background: var(--blue); color: #fff; }
+
+/* CONTROL BUTTONS */
+.ctrl-row { display: flex; gap: 6px; margin-bottom: 6px; flex-wrap: wrap; }
+.ctrl-btn {
+  flex: 1; min-width: 80px; padding: 9px 10px; border-radius: 4px; border: 1px solid var(--border);
+  background: var(--bg3); color: var(--text); cursor: pointer; font-family: var(--head);
+  font-size: 13px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase;
+  transition: all .12s; display: flex; align-items: center; justify-content: center; gap: 6px;
+}
+.ctrl-btn:hover { border-color: var(--border-active); background: var(--bg4); }
+.ctrl-btn:active { transform: scale(.97); }
+.ctrl-btn.danger { border-color: rgba(232,72,60,.4); color: var(--accent); }
+.ctrl-btn.danger:hover { background: rgba(232,72,60,.15); border-color: var(--accent); }
+.ctrl-btn.danger.active { background: var(--accent); color: #fff; border-color: var(--accent); animation: pulse 2s infinite; }
+.ctrl-btn.success { border-color: rgba(34,197,94,.4); color: var(--live); }
+.ctrl-btn.success:hover { background: rgba(34,197,94,.1); }
+.ctrl-btn.success.active { background: var(--live); color: #000; border-color: var(--live); animation: pulse 2s infinite; }
+.ctrl-btn.warn { border-color: rgba(245,158,11,.4); color: var(--warn); }
+.ctrl-btn.warn:hover { background: rgba(245,158,11,.1); }
+.ctrl-btn.warn.active { background: var(--warn); color: #000; }
+.ctrl-btn.blue { border-color: rgba(59,130,246,.4); color: var(--blue); }
+.ctrl-btn.blue:hover { background: rgba(59,130,246,.1); }
+.ctrl-btn.blue.active { background: var(--blue); color: #fff; }
+.ctrl-icon { font-size: 16px; line-height: 1; }
+
+/* AUDIO MIXER */
+.audio-channel { background: var(--bg3); border: 1px solid var(--border); border-radius: 4px; padding: 8px; margin-bottom: 6px; }
+.audio-row { display: flex; align-items: center; gap: 8px; }
+.audio-name { font-family: var(--head); font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--text2); width: 80px; flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.audio-meter { flex: 1; height: 6px; background: var(--bg); border-radius: 3px; overflow: hidden; position: relative; }
+.audio-meter-fill { height: 100%; width: 0%; background: linear-gradient(90deg, var(--live) 0%, var(--live) 60%, var(--warn) 60%, var(--warn) 80%, var(--red) 80%); transition: width .08s; border-radius: 3px; }
+.audio-vol { font-family: var(--mono); font-size: 10px; color: var(--text3); width: 32px; text-align: right; }
+.mute-btn { width: 22px; height: 22px; border-radius: 3px; border: 1px solid var(--border); background: transparent; color: var(--text3); cursor: pointer; font-size: 13px; display: flex; align-items: center; justify-content: center; transition: all .1s; flex-shrink: 0; }
+.mute-btn:hover { border-color: var(--border-active); color: var(--text); }
+.mute-btn.muted { border-color: var(--accent); background: rgba(232,72,60,.15); color: var(--accent); }
+.vol-slider { width: 100%; height: 4px; appearance: none; background: var(--border); border-radius: 2px; cursor: pointer; margin-top: 6px; }
+.vol-slider::-webkit-slider-thumb { appearance: none; width: 12px; height: 12px; background: var(--text); border-radius: 50%; cursor: pointer; }
+
+/* TRANSITIONS */
+.trans-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.trans-btn {
+  padding: 8px 6px; border-radius: 4px; border: 1px solid var(--border);
+  background: var(--bg3); color: var(--text2); cursor: pointer; font-family: var(--head);
+  font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
+  text-align: center; transition: all .12s;
+}
+.trans-btn:hover { border-color: var(--border-active); color: var(--text); background: var(--bg4); }
+.trans-btn.active { border-color: var(--accent2); color: var(--accent2); background: rgba(249,115,22,.1); }
+
+/* DURATION CONTROL */
+.dur-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.dur-label { font-family: var(--head); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .1em; color: var(--text3); }
+.dur-val { font-family: var(--mono); font-size: 14px; color: var(--accent2); min-width: 45px; text-align: right; }
+input[type=range].dur { flex: 1; height: 4px; appearance: none; background: var(--border); border-radius: 2px; cursor: pointer; }
+input[type=range].dur::-webkit-slider-thumb { appearance: none; width: 14px; height: 14px; background: var(--accent2); border-radius: 50%; cursor: pointer; }
+
+/* STATS */
+.stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.stat-card { background: var(--bg3); border: 1px solid var(--border); border-radius: 4px; padding: 8px 10px; }
+.stat-label { font-family: var(--head); font-size: 10px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--text3); margin-bottom: 3px; }
+.stat-value { font-family: var(--mono); font-size: 18px; color: var(--text); line-height: 1; }
+.stat-value.good { color: var(--live); }
+.stat-value.warn { color: var(--warn); }
+.stat-value.bad { color: var(--accent); }
+.stat-sub { font-family: var(--mono); font-size: 10px; color: var(--text3); margin-top: 2px; }
+
+/* PREVIEW PANEL */
+.preview-container { background: #000; aspect-ratio: 16/9; border-radius: 3px; overflow: hidden; position: relative; display: flex; align-items: center; justify-content: center; }
+.preview-container img { width: 100%; height: 100%; object-fit: contain; }
+.preview-label { position: absolute; top: 6px; left: 6px; font-family: var(--head); font-size: 9px; font-weight: 700; letter-spacing: .15em; text-transform: uppercase; padding: 2px 6px; border-radius: 2px; }
+.preview-label.pgm { background: var(--accent); color: #fff; }
+.preview-label.pvw { background: var(--blue); color: #fff; }
+.preview-placeholder { color: var(--text3); font-family: var(--mono); font-size: 11px; letter-spacing: .05em; text-align: center; }
+.preview-stamp { position: absolute; right: 6px; bottom: 6px; font-family: var(--mono); font-size: 9px; color: var(--text2); background: rgba(0,0,0,.65); padding: 2px 5px; border-radius: 2px; }
+
+/* SOURCES */
+.source-list { display: flex; flex-direction: column; gap: 4px; }
+.source-item { display: flex; align-items: center; gap: 8px; padding: 6px 8px; background: var(--bg3); border: 1px solid var(--border); border-radius: 4px; cursor: pointer; transition: all .1s; }
+.source-item:hover { border-color: var(--border-active); background: var(--bg4); }
+.source-icon { font-size: 14px; color: var(--text3); }
+.source-name { flex: 1; font-family: var(--head); font-size: 12px; font-weight: 500; letter-spacing: .04em; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.source-vis { width: 20px; height: 20px; border-radius: 3px; border: 1px solid var(--border); background: transparent; color: var(--text3); cursor: pointer; font-size: 11px; display: flex; align-items: center; justify-content: center; transition: all .1s; }
+.source-vis:hover { border-color: var(--live); color: var(--live); }
+.source-vis.hidden { opacity: .4; }
+.scene-edit {
+  position: absolute; left: 5px; top: 5px; height: 18px; padding: 0 6px; border: 1px solid var(--border);
+  border-radius: 2px; background: rgba(10,11,13,.85); color: var(--text2); cursor: pointer;
+  font-family: var(--head); font-size: 9px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+}
+.scene-edit:hover, .scene-edit.active { border-color: var(--accent2); color: var(--accent2); }
+.source-toolbar { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; }
+.mini-select, .mini-input, .mini-textarea {
+  width: 100%; background: var(--bg3); border: 1px solid var(--border); border-radius: 4px;
+  color: var(--text); font-family: var(--mono); font-size: 11px; outline: none;
+}
+.mini-select, .mini-input { height: 28px; padding: 0 8px; }
+.mini-textarea { min-height: 130px; padding: 8px; resize: vertical; line-height: 1.4; }
+.mini-select:focus, .mini-input:focus, .mini-textarea:focus { border-color: var(--border-active); }
+.mini-btn {
+  height: 28px; padding: 0 9px; border-radius: 4px; border: 1px solid var(--border);
+  background: var(--bg3); color: var(--text2); cursor: pointer; font-family: var(--head);
+  font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; white-space: nowrap;
+}
+.mini-btn:hover { border-color: var(--border-active); color: var(--text); background: var(--bg4); }
+.mini-btn.accent { border-color: rgba(249,115,22,.45); color: var(--accent2); }
+.source-meta { font-family: var(--mono); font-size: 9px; color: var(--text3); margin-left: 4px; white-space: nowrap; }
+.source-action { flex-shrink: 0; }
+.source-empty { color: var(--text3); font-family: var(--mono); font-size: 11px; padding: 18px 8px; text-align: center; border: 1px dashed var(--border); border-radius: 4px; }
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.form-grid.full { grid-template-columns: 1fr; }
+.form-field { display: flex; flex-direction: column; gap: 5px; }
+.form-help { font-family: var(--mono); font-size: 10px; color: var(--text3); line-height: 1.4; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+.modal-actions .mini-btn { height: 32px; padding: 0 14px; }
+.source-modal-box { width: min(720px, calc(100vw - 28px)); max-height: calc(100vh - 48px); overflow-y: auto; }
+.settings-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px; }
+
+/* CONNECT MODAL */
+#connect-modal {
+  position: fixed; inset: 0; background: rgba(0,0,0,.85); z-index: 1000;
+  display: flex; align-items: center; justify-content: center;
+}
+#connect-modal.hidden { display: none; }
+#scene-modal, #source-modal, #source-editor-modal {
+  position: fixed; inset: 0; background: rgba(0,0,0,.85); z-index: 1000;
+  display: flex; align-items: center; justify-content: center;
+}
+#scene-modal.hidden, #source-modal.hidden, #source-editor-modal.hidden { display: none; }
+.modal-box {
+  background: var(--bg2); border: 1px solid var(--border-active); border-radius: 8px;
+  padding: 32px; width: 400px;
+}
+.modal-title { font-family: var(--head); font-size: 26px; font-weight: 900; letter-spacing: .12em; text-transform: uppercase; color: var(--text); margin-bottom: 4px; }
+.modal-subtitle { font-family: var(--body); font-size: 13px; color: var(--text2); margin-bottom: 24px; }
+.field-label { font-family: var(--head); font-size: 11px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--text3); margin-bottom: 5px; }
+.field-input {
+  width: 100%; height: 38px; background: var(--bg3); border: 1px solid var(--border); border-radius: 4px;
+  color: var(--text); font-family: var(--mono); font-size: 13px; padding: 0 10px;
+  outline: none; margin-bottom: 14px; transition: border-color .15s;
+}
+.field-input:focus { border-color: var(--border-active); }
+.connect-btn {
+  width: 100%; height: 42px; background: var(--accent); border: none; border-radius: 4px;
+  color: #fff; font-family: var(--head); font-size: 14px; font-weight: 700; letter-spacing: .14em;
+  text-transform: uppercase; cursor: pointer; transition: all .15s;
+}
+.connect-btn:hover { background: #c73d32; }
+.error-msg { font-family: var(--mono); font-size: 12px; color: var(--accent); margin-top: 10px; min-height: 16px; }
+
+/* NOTIFICATION TOAST */
+#toast {
+  position: fixed; bottom: 20px; right: 20px; z-index: 2000;
+  font-family: var(--head); font-size: 13px; font-weight: 600; letter-spacing: .06em;
+  padding: 10px 18px; background: var(--bg3); border: 1px solid var(--border);
+  border-radius: 5px; color: var(--text); opacity: 0; transform: translateY(10px);
+  transition: all .2s; pointer-events: none;
+}
+#toast.show { opacity: 1; transform: translateY(0); }
+#toast.ok { border-color: var(--live); color: var(--live); }
+#toast.err { border-color: var(--accent); color: var(--accent); }
+#toast.info { border-color: var(--blue); color: var(--blue); }
+
+/* SCROLLBAR */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div id="topbar">
+  <div id="topbar-left">
+    <div id="logo">OBS <span>Producer</span></div>
+    <div id="status-bar">
+      <div class="status-dot" id="dot-live"></div>
+      <span class="status-label" id="lbl-live">OFF AIR</span>
+      <div class="status-dot" id="dot-rec" style="margin-left:8px"></div>
+      <span class="status-label" id="lbl-rec">NOT REC</span>
+    </div>
+    <span id="timecode">--:--:--</span>
+  </div>
+  <div id="topbar-right">
+    <span id="clock">--:--:--</span>
+    <button class="top-btn" id="layout-btn" onclick="resetLayout()">⊞ RESET LAYOUT</button>
+    <button class="top-btn connect" id="conn-btn" onclick="openConnectModal()">⚡ CONNECT OBS</button>
+  </div>
+</div>
+
+<!-- WORKSPACE -->
+<div id="workspace"></div>
+
+<!-- CONNECT MODAL -->
+<!-- Replace your existing connect-modal content with this -->
+<div id="connect-modal">
+  <div class="modal-box">
+    <div class="modal-title">Connect to OBS</div>
+    
+    <div class="field-label">Host (IP Address)</div>
+    <input class="field-input" id="obs-host" type="text" value="127.0.0.1">
+    
+    <div class="field-label">Port</div>
+    <input class="field-input" id="obs-port" type="text" value="4455">
+    
+    <div class="field-label">Password</div>
+    <input class="field-input" id="obs-pass" type="password">
+    
+    <button class="connect-btn" onclick="connectOBS()">Connect</button>
+    <div class="error-msg" id="err-msg"></div>
+  </div>
+</div>
+
+<!-- CREATE SCENE MODAL -->
+<div id="scene-modal" class="hidden">
+  <div class="modal-box">
+    <div class="modal-title">New Scene</div>
+    <div class="modal-subtitle">Create it without switching the streamer away from the live scene.</div>
+    <div class="field-label">Scene name</div>
+    <input class="field-input" id="new-scene-name" type="text" placeholder="BRB polish pass">
+    <div class="modal-actions">
+      <button class="mini-btn" onclick="closeModal('scene-modal')">CANCEL</button>
+      <button class="mini-btn accent" onclick="createSceneFromModal()">CREATE SCENE</button>
+    </div>
+    <div class="error-msg" id="scene-err"></div>
+  </div>
+</div>
+
+<!-- ADD SOURCE MODAL -->
+<div id="source-modal" class="hidden">
+  <div class="modal-box source-modal-box">
+    <div class="modal-title">Add Source</div>
+    <div class="modal-subtitle">Add a source to the selected edit scene. Program stays untouched.</div>
+    <div class="form-grid">
+      <div class="form-field">
+        <div class="field-label">Target scene</div>
+        <select class="mini-select" id="new-source-scene"></select>
+      </div>
+      <div class="form-field">
+        <div class="field-label">Source kind</div>
+        <select class="mini-select" id="new-source-kind" onchange="renderNewSourceFields()"></select>
+      </div>
+      <div class="form-field">
+        <div class="field-label">Source name</div>
+        <input class="mini-input" id="new-source-name" type="text" placeholder="Sponsor browser">
+      </div>
+      <div class="form-field">
+        <div class="field-label">Visibility</div>
+        <select class="mini-select" id="new-source-visible">
+          <option value="true">Visible</option>
+          <option value="false">Hidden while building</option>
+        </select>
+      </div>
+    </div>
+    <div id="new-source-fields" style="margin-top:10px;"></div>
+    <div class="form-field" style="margin-top:10px;">
+      <div class="field-label">Extra settings JSON</div>
+      <textarea class="mini-textarea" id="new-source-settings" spellcheck="false">{}</textarea>
+      <div class="form-help">These settings are merged with the quick fields above before CreateInput runs.</div>
+    </div>
+    <div class="modal-actions">
+      <button class="mini-btn" onclick="closeModal('source-modal')">CANCEL</button>
+      <button class="mini-btn accent" onclick="createSourceFromModal()">ADD SOURCE</button>
+    </div>
+    <div class="error-msg" id="source-err"></div>
+  </div>
+</div>
+
+<!-- EDIT SOURCE MODAL -->
+<div id="source-editor-modal" class="hidden">
+  <div class="modal-box source-modal-box">
+    <div class="modal-title" id="editor-title">Edit Source</div>
+    <div class="modal-subtitle" id="editor-subtitle">Update settings and transform for the selected scene item.</div>
+    <div class="settings-columns">
+      <div class="form-field">
+        <div class="field-label">Input settings JSON</div>
+        <textarea class="mini-textarea" id="edit-source-settings" spellcheck="false"></textarea>
+      </div>
+      <div class="form-field">
+        <div class="field-label">Scene item transform JSON</div>
+        <textarea class="mini-textarea" id="edit-source-transform" spellcheck="false"></textarea>
+      </div>
+    </div>
+    <div class="form-help" style="margin-top:8px;">Settings use OBS' native keys for that source kind. Transform applies only to this scene item.</div>
+    <div class="modal-actions">
+      <button class="mini-btn" onclick="closeModal('source-editor-modal')">CLOSE</button>
+      <button class="mini-btn" onclick="applySourceTransform()">APPLY TRANSFORM</button>
+      <button class="mini-btn accent" onclick="applySourceSettings()">APPLY SETTINGS</button>
+    </div>
+    <div class="error-msg" id="editor-err"></div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div id="toast"></div>
+
+<script>
+// ============================================================
+// STATE
+// ============================================================
+const state = {
+  connected: false, ws: null, streaming: false, recording: false,
+  virtualCam: false, studioMode: false, replayBuffer: false,
+  scenes: [], currentScene: '', previewScene: '',
+  editScene: '', sources: [], audioSources: [], sourceKinds: [],
+  stats: { fps: 0, cpuUsage: 0, memoryUsage: 0, kbitsPerSec: 0, renderSkipped: 0, outputSkipped: 0 },
+  transition: { name: 'Cut', duration: 300 },
+  obsVersion: '', authenticated: false,
+  panels: {}, previewLoop: null, previewBusy: false, audioMeterLoop: null, editor: null
+};
+
+const OBS_EVENT_SUBSCRIPTIONS =
+  (1 << 0) | (1 << 1) | (1 << 2) | (1 << 3) | (1 << 4) | (1 << 5) |
+  (1 << 6) | (1 << 7) | (1 << 8) | (1 << 9) | (1 << 10) | (1 << 16);
+
+// ============================================================
+// PANELS CONFIG
+// ============================================================
+const PANELS = [
+  { id: 'p-preview',   title: 'Program Output',   icon: '◉', w: 340, h: 240, x: 12,  y: 12 },
+  { id: 'p-pvw',       title: 'Preview',           icon: '◎', w: 340, h: 240, x: 360, y: 12 },
+  { id: 'p-scenes',    title: 'Scenes',             icon: '▦', w: 334, h: 300, x: 12,  y: 260 },
+  { id: 'p-stream',    title: 'Broadcast Controls', icon: '⏺', w: 334, h: 220, x: 12,  y: 568 },
+  { id: 'p-audio',     title: 'Audio Mixer',        icon: '▲', w: 334, h: 260, x: 710, y: 12 },
+  { id: 'p-trans',     title: 'Transitions',        icon: '↔', w: 334, h: 200, x: 710, y: 280 },
+  { id: 'p-sources',   title: 'Sources',            icon: '⊞', w: 334, h: 260, x: 710, y: 488 },
+  { id: 'p-stats',     title: 'Stats',              icon: '≡', w: 320, h: 240, x: 360, y: 260 },
+];
+
+// ============================================================
+// PANEL DRAG SYSTEM
+// ============================================================
+function createPanels() {
+  const ws = document.getElementById('workspace');
+  PANELS.forEach(cfg => {
+    const panel = document.createElement('div');
+    panel.className = 'panel';
+    panel.id = cfg.id;
+    panel.style.cssText = `left:${cfg.x}px;top:${cfg.y}px;width:${cfg.w}px;height:${cfg.h}px;z-index:10;`;
+    panel.innerHTML = `
+      <div class="panel-header" data-panel="${cfg.id}">
+        <div class="panel-title">
+          <span class="panel-title-dot"></span>
+          ${cfg.icon} ${cfg.title}
+        </div>
+        <div class="panel-actions">
+          <button class="panel-btn" onclick="minimizePanel('${cfg.id}')" title="Minimize">—</button>
+        </div>
+      </div>
+      <div class="panel-body" id="${cfg.id}-body"></div>
+      <div class="resize-handle" data-resize="${cfg.id}"></div>
+    `;
+    ws.appendChild(panel);
+    makeDraggable(panel);
+    makeResizable(panel.querySelector('.resize-handle'));
+    state.panels[cfg.id] = { x: cfg.x, y: cfg.y, w: cfg.w, h: cfg.h, minimized: false };
+  });
+  renderAllPanels();
+}
+
+function makeDraggable(panel) {
+  const header = panel.querySelector('.panel-header');
+  let ox, oy, startX, startY;
+  header.addEventListener('mousedown', e => {
+    if (e.target.tagName === 'BUTTON') return;
+    e.preventDefault();
+    const rect = panel.getBoundingClientRect();
+    ox = e.clientX - rect.left; oy = e.clientY - rect.top;
+    panel.classList.add('dragging');
+    // Bring to front
+    document.querySelectorAll('.panel').forEach(p => p.style.zIndex = 10);
+    panel.style.zIndex = 100;
+    const move = ev => {
+      const ws = document.getElementById('workspace').getBoundingClientRect();
+      let nx = ev.clientX - ws.left - ox;
+      let ny = ev.clientY - ws.top - oy;
+      nx = Math.max(0, Math.min(nx, ws.width - panel.offsetWidth));
+      ny = Math.max(0, Math.min(ny, ws.height - panel.offsetHeight));
+      panel.style.left = nx + 'px'; panel.style.top = ny + 'px';
+    };
+    const up = () => {
+      panel.classList.remove('dragging');
+      document.removeEventListener('mousemove', move);
+      document.removeEventListener('mouseup', up);
+    };
+    document.addEventListener('mousemove', move);
+    document.addEventListener('mouseup', up);
+  });
+}
+
+function makeResizable(handle) {
+  const panel = handle.parentElement;
+  handle.addEventListener('mousedown', e => {
+    e.preventDefault(); e.stopPropagation();
+    const startW = panel.offsetWidth, startH = panel.offsetHeight, startX = e.clientX, startY = e.clientY;
+    const move = ev => {
+      const nw = Math.max(160, startW + ev.clientX - startX);
+      const nh = Math.max(120, startH + ev.clientY - startY);
+      panel.style.width = nw + 'px'; panel.style.height = nh + 'px';
+    };
+    const up = () => { document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up); };
+    document.addEventListener('mousemove', move);
+    document.addEventListener('mouseup', up);
+  });
+}
+
+function minimizePanel(id) {
+  const panel = document.getElementById(id);
+  const body = panel.querySelector('.panel-body');
+  const resize = panel.querySelector('.resize-handle');
+  const s = state.panels[id];
+  s.minimized = !s.minimized;
+  if (s.minimized) {
+    s.savedH = panel.offsetHeight;
+    body.style.display = 'none'; resize.style.display = 'none';
+    panel.style.height = '32px';
+  } else {
+    body.style.display = ''; resize.style.display = '';
+    panel.style.height = (s.savedH || 200) + 'px';
+  }
+}
+
+function resetLayout() {
+  PANELS.forEach(cfg => {
+    const panel = document.getElementById(cfg.id);
+    panel.style.left = cfg.x + 'px'; panel.style.top = cfg.y + 'px';
+    panel.style.width = cfg.w + 'px'; panel.style.height = cfg.h + 'px';
+    const body = panel.querySelector('.panel-body');
+    const resize = panel.querySelector('.resize-handle');
+    body.style.display = ''; resize.style.display = '';
+    state.panels[cfg.id].minimized = false;
+  });
+  showToast('Layout reset', 'info');
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function jsArg(value) {
+  return escapeHtml(JSON.stringify(String(value ?? '')));
+}
+
+function prettyJson(value) {
+  return JSON.stringify(value || {}, null, 2);
+}
+
+// ============================================================
+// RENDER PANELS
+// ============================================================
+function renderAllPanels() {
+  renderPreviewPanel();
+  renderPvwPanel();
+  renderScenesPanel();
+  renderStreamPanel();
+  renderAudioPanel();
+  renderTransitionsPanel();
+  renderSourcesPanel();
+  renderStatsPanel();
+}
+
+function renderPreviewPanel() {
+  const b = document.getElementById('p-preview-body');
+  b.innerHTML = `
+    <div class="preview-container" id="pgm-preview">
+      <div class="preview-placeholder">⚫<br><br>${state.connected ? 'WAITING FOR FRAME' : 'NO SIGNAL'}<br>${state.connected ? 'Program screenshot' : 'Not connected to OBS'}</div>
+      <span class="preview-label pgm">PGM</span>
+      <span class="preview-stamp" id="pgm-preview-stamp">--</span>
+    </div>
+    <div style="margin-top:8px; display:flex; justify-content:space-between; align-items:center;">
+      <span style="font-family:var(--mono);font-size:11px;color:var(--text3);" id="pgm-scene-name">${escapeHtml(state.currentScene || '—')}</span>
+      <span style="font-family:var(--mono);font-size:11px;color:var(--text3);">screenshots</span>
+    </div>
+  `;
+}
+
+function renderPvwPanel() {
+  const b = document.getElementById('p-pvw-body');
+  b.innerHTML = `
+    <div class="preview-container" id="pvw-preview">
+      <div class="preview-placeholder">⚪<br><br>${state.connected ? 'WAITING FOR FRAME' : 'PREVIEW'}<br>${state.studioMode ? 'Studio preview' : 'Studio mode disabled'}</div>
+      <span class="preview-label pvw">PVW</span>
+      <span class="preview-stamp" id="pvw-preview-stamp">--</span>
+    </div>
+    <div style="margin-top:8px; display:flex; justify-content:space-between; align-items:center;">
+      <span style="font-family:var(--mono);font-size:11px;color:var(--text3);" id="pvw-scene-name">${escapeHtml(state.previewScene || (state.studioMode ? '—' : state.currentScene || '—'))}</span>
+      <button class="ctrl-btn blue" style="flex:0;padding:5px 12px;font-size:11px;" id="cut-btn" onclick="triggerTransition()">✂ CUT</button>
+    </div>
+  `;
+}
+
+function renderScenesPanel() {
+  const b = document.getElementById('p-scenes-body');
+  if (!state.connected || state.scenes.length === 0) {
+    b.innerHTML = `<div style="color:var(--text3);font-family:var(--mono);font-size:11px;padding:20px;text-align:center;">Connect OBS to load scenes</div>`;
+    return;
+  }
+  let html = `<div class="scene-grid">`;
+  state.scenes.forEach(scene => {
+    const isActive = scene.sceneName === state.currentScene;
+    const isPvw = scene.sceneName === state.previewScene;
+    const isEdit = scene.sceneName === state.editScene;
+    let cls = isActive ? 'scene-card active' : (isPvw ? 'scene-card preview' : 'scene-card');
+    let badge = isActive ? `<span class="scene-badge badge-live">PGM</span>` : (isPvw ? `<span class="scene-badge badge-pvw">PVW</span>` : '');
+    html += `
+      <div class="${cls}" onclick="switchScene(${jsArg(scene.sceneName)})">
+        ${badge}
+        <button class="scene-edit ${isEdit ? 'active':''}" onclick="event.stopPropagation(); setEditScene(${jsArg(scene.sceneName)})">EDIT</button>
+        <div class="scene-thumb" id="thumb-${slugify(scene.sceneName)}">
+          <span>${escapeHtml(scene.sceneName.substring(0,3).toUpperCase())}</span>
+        </div>
+        <div class="scene-name">${escapeHtml(scene.sceneName)}</div>
+      </div>`;
+  });
+  html += '</div>';
+  b.innerHTML = html;
+}
+
+function renderStreamPanel() {
+  const b = document.getElementById('p-stream-body');
+  b.innerHTML = `
+    <div class="ctrl-row">
+      <button class="ctrl-btn danger ${state.streaming ? 'active':''}" id="btn-stream" onclick="toggleStream()">
+        <span class="ctrl-icon">⏺</span> ${state.streaming ? 'STOP STREAM' : 'GO LIVE'}
+      </button>
+    </div>
+    <div class="ctrl-row">
+      <button class="ctrl-btn success ${state.recording ? 'active':''}" id="btn-rec" onclick="toggleRecord()">
+        <span class="ctrl-icon">●</span> ${state.recording ? 'STOP REC' : 'RECORD'}
+      </button>
+      <button class="ctrl-btn warn ${state.replayBuffer ? 'active':''}" id="btn-replay" onclick="toggleReplayBuffer()">
+        <span class="ctrl-icon">⟳</span> REPLAY
+      </button>
+    </div>
+    <div class="ctrl-row">
+      <button class="ctrl-btn blue ${state.virtualCam ? 'active':''}" id="btn-vcam" onclick="toggleVirtualCam()">
+        <span class="ctrl-icon">⎙</span> VCAM
+      </button>
+      <button class="ctrl-btn ${state.studioMode ? 'active':''}" id="btn-studio" onclick="toggleStudioMode()" style="${state.studioMode ? 'border-color:var(--accent2);color:var(--accent2);background:rgba(249,115,22,.1)':''}">
+        <span class="ctrl-icon">⊡</span> STUDIO MODE
+      </button>
+    </div>
+    <div class="ctrl-row" style="margin-top:4px;">
+      <button class="ctrl-btn" onclick="saveReplayBuffer()" title="Save replay buffer clip">
+        <span class="ctrl-icon">💾</span> SAVE REPLAY
+      </button>
+      <button class="ctrl-btn" onclick="openProjector()">
+        <span class="ctrl-icon">⧉</span> PROJECTOR
+      </button>
+    </div>
+  `;
+}
+
+function renderAudioPanel() {
+  const b = document.getElementById('p-audio-body');
+  if (!state.connected || state.audioSources.length === 0) {
+    b.innerHTML = `<div style="color:var(--text3);font-family:var(--mono);font-size:11px;padding:20px;text-align:center;">No controllable audio sources</div>`;
+    return;
+  }
+  let html = '';
+  state.audioSources.forEach((src, i) => {
+    const vol = Math.round((src.volume || 1) * 100);
+    const muted = src.muted || false;
+    const level = muted ? 0 : Math.round(src.meter || 0);
+    html += `
+      <div class="audio-channel">
+        <div class="audio-row">
+          <span class="audio-name" title="${escapeHtml(src.name)}">${escapeHtml(src.name)}</span>
+          <div class="audio-meter"><div class="audio-meter-fill" id="meter-${i}" style="width:${level}%"></div></div>
+          <span class="audio-vol" id="vol-${i}">${vol}%</span>
+          <button class="mute-btn ${muted?'muted':''}" id="mute-${i}" onclick="toggleMute(${jsArg(src.name)},${i})">${muted?'🔇':'🔊'}</button>
+        </div>
+        <input type="range" class="vol-slider" min="0" max="200" value="${vol}" oninput="setVolume(${jsArg(src.name)},this.value,${i})">
+      </div>`;
+  });
+  b.innerHTML = html;
+}
+
+function decayAudioMeters() {
+  if (!state.connected) return;
+  state.audioSources.forEach((src, i) => {
+    src.meter = Math.max(0, (src.meter || 0) - 4);
+    updateMeterDom(i, src.muted ? 0 : src.meter);
+  });
+}
+
+function renderTransitionsPanel() {
+  const b = document.getElementById('p-trans-body');
+  const transitions = ['Cut', 'Fade', 'Swipe', 'Slide', 'Stinger', 'Luma Wipe'];
+  let html = `<div class="trans-grid">`;
+  transitions.forEach(t => {
+    html += `<div class="trans-btn ${state.transition.name === t ? 'active':''}" onclick="setTransition('${t}')">${t}</div>`;
+  });
+  html += `</div>
+  <div class="dur-row">
+    <span class="dur-label">Duration</span>
+    <input type="range" class="dur" min="0" max="3000" step="50" value="${state.transition.duration}" oninput="setTransDuration(this.value)">
+    <span class="dur-val" id="trans-dur-val">${state.transition.duration}ms</span>
+  </div>
+  <div style="margin-top:8px;">
+    <button class="ctrl-btn" onclick="triggerTransition()" style="width:100%;">
+      ▶ TRANSITION NOW
+    </button>
+  </div>`;
+  b.innerHTML = html;
+}
+
+function renderSourcesPanel() {
+  const b = document.getElementById('p-sources-body');
+  if (!state.connected) {
+    b.innerHTML = `<div style="color:var(--text3);font-family:var(--mono);font-size:11px;padding:20px;text-align:center;">Connect OBS to edit scenes and sources</div>`;
+    return;
+  }
+  const sceneOptions = state.scenes.map(scene => `
+    <option value="${escapeHtml(scene.sceneName)}" ${scene.sceneName === state.editScene ? 'selected':''}>${escapeHtml(scene.sceneName)}</option>
+  `).join('');
+  let html = `
+    <div class="source-toolbar">
+      <select class="mini-select" id="edit-scene-select" onchange="setEditScene(this.value)">${sceneOptions}</select>
+      <button class="mini-btn" onclick="openSceneModal()">+ Scene</button>
+      <button class="mini-btn accent" onclick="openAddSourceModal()">+ Source</button>
+    </div>
+  `;
+  if (!state.editScene) {
+    b.innerHTML = html + `<div class="source-empty">Choose or create an edit scene.</div>`;
+    return;
+  }
+  if (state.sources.length === 0) {
+    b.innerHTML = html + `<div class="source-empty">No sources in ${escapeHtml(state.editScene)} yet.</div>`;
+    return;
+  }
+  const icons = { image_source:'🖼', color_source:'🎨', browser_source:'🌐', ffmpeg_source:'🎬', vlc_source:'🎬', monitor_capture:'🖥', window_capture:'⊡', game_capture:'🎮', dshow_video:'📷', wasapi_input_capture:'🎤', wasapi_output_capture:'🔊', text_gdiplus:'𝐓', scene:'▦' };
+  html += `<div class="source-list">`;
+  state.sources.forEach(src => {
+    const icon = icons[src.sourceType] || '◈';
+    html += `
+      <div class="source-item" onclick="openSourceEditor(${jsArg(src.sourceName)}, ${src.sceneItemId})">
+        <span class="source-icon">${icon}</span>
+        <span class="source-name">${escapeHtml(src.sourceName)}</span>
+        <span class="source-meta">${escapeHtml(src.sourceType || 'source')}</span>
+        <button class="source-vis source-action ${src.sceneItemEnabled === false ? 'hidden':''}" onclick="event.stopPropagation(); toggleSource('${src.sceneItemId}',${jsArg(src.sourceName)},this)" title="Toggle visibility">${src.sceneItemEnabled === false ? '○' : '●'}</button>
+      </div>`;
+  });
+  html += '</div>';
+  b.innerHTML = html;
+}
+
+function renderStatsPanel() {
+  const b = document.getElementById('p-stats-body');
+  const s = state.stats;
+  b.innerHTML = `
+    <div class="stat-grid">
+      <div class="stat-card">
+        <div class="stat-label">FPS</div>
+        <div class="stat-value ${s.fps>=59?'good':s.fps>=30?'':'bad'}">${s.fps.toFixed(1)}</div>
+        <div class="stat-sub">target 60</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Bitrate</div>
+        <div class="stat-value ${s.kbitsPerSec>0?'good':''}">${(s.kbitsPerSec/1000).toFixed(1)} <small style="font-size:12px">Mbps</small></div>
+        <div class="stat-sub">kbps: ${Math.round(s.kbitsPerSec)}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">CPU</div>
+        <div class="stat-value ${s.cpuUsage<50?'good':s.cpuUsage<80?'warn':'bad'}">${s.cpuUsage.toFixed(1)}<small style="font-size:12px">%</small></div>
+        <div class="stat-sub">usage</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Dropped</div>
+        <div class="stat-value ${s.renderSkipped===0?'good':'bad'}">${Math.round(s.renderSkipped)}</div>
+        <div class="stat-sub">render skip</div>
+      </div>
+    </div>
+    <div style="margin-top:8px; padding: 8px; background: var(--bg3); border: 1px solid var(--border); border-radius:4px;">
+      <div style="font-family:var(--mono);font-size:10px;color:var(--text3);">Memory: <span style="color:var(--text2);">${s.memoryUsage.toFixed(0)} MB</span> | Skipped out: <span style="color:var(--text2);">${Math.round(s.outputSkipped)}</span></div>
+    </div>
+    <button class="ctrl-btn" style="width:100%;margin-top:6px;" onclick="fetchStats()">↻ REFRESH</button>
+  `;
+}
+
+// ============================================================
+// OBS WEBSOCKET v5
+// ============================================================
+let msgId = 1;
+const pendingReqs = {};
+
+function openConnectModal() {
+  document.getElementById('connect-modal').classList.remove('hidden');
+  const errMsg = document.getElementById('err-msg');
+  if (errMsg) errMsg.textContent = '';
+}
+
+function connectOBS() {
+  const hostVal = document.getElementById('obs-host').value.trim() || '127.0.0.1';
+  const portVal = document.getElementById('obs-port').value.trim() || '4455';
+  
+  let url = hostVal;
+  if (!url.startsWith('ws://') && !url.startsWith('wss://')) {
+    url = `ws://${hostVal}:${portVal}`;
+  } else if (!url.includes(':', 6)) {
+    url = `${url}:${portVal}`;
+  }
+
+  const pass = document.getElementById('obs-pass').value;
+  const errMsg = document.getElementById('err-msg');
+  if (errMsg) errMsg.textContent = 'Connecting…';
+  
+  try {
+    if (state.ws) { state.ws.close(); }
+    state.ws = new WebSocket(url);
+    state.ws.onopen = () => {};
+    state.ws.onmessage = (ev) => handleMessage(JSON.parse(ev.data), pass);
+    state.ws.onerror = () => {
+      if (errMsg) errMsg.textContent = 'Connection failed. Is OBS running with WebSocket enabled?';
+    };
+    state.ws.onclose = () => {
+      if (state.connected) { onDisconnect(); }
+    };
+  } catch(e) {
+    if (errMsg) errMsg.textContent = 'Invalid WebSocket URL.';
+  }
+}
+
+function handleEvent(ev) {
+  switch(ev.eventType) {
+    case 'CurrentProgramSceneChanged':
+      state.currentScene = ev.eventData.sceneName;
+      renderScenesPanel();
+      updatePreviewSceneLabels();
+      queuePreviewRefresh();
+      break;
+    case 'CurrentPreviewSceneChanged':
+      state.previewScene = ev.eventData.sceneName;
+      renderScenesPanel();
+      updatePreviewSceneLabels();
+      queuePreviewRefresh();
+      break;
+    case 'StreamStateChanged':
+      state.streaming = ev.eventData.outputActive;
+      updateStreamUI();
+      break;
+    case 'RecordStateChanged':
+      state.recording = ev.eventData.outputActive;
+      updateRecordUI();
+      break;
+    case 'VirtualcamStateChanged':
+      state.virtualCam = ev.eventData.outputActive;
+      renderStreamPanel();
+      break;
+    case 'StudioModeStateChanged':
+      state.studioMode = ev.eventData.studioModeEnabled;
+      renderStreamPanel();
+      renderPvwPanel();
+      updatePreviewSceneLabels();
+      queuePreviewRefresh();
+      break;
+    case 'SceneListChanged':
+      fetchScenes();
+      break;
+    case 'SceneCreated':
+    case 'SceneRemoved':
+    case 'SceneNameChanged':
+      fetchScenes();
+      break;
+    case 'SceneItemListReindexed':
+    case 'SceneItemCreated':
+    case 'SceneItemRemoved':
+      fetchSources();
+      queuePreviewRefresh();
+      break;
+    case 'InputCreated':
+    case 'InputRemoved':
+    case 'InputNameChanged':
+      fetchAudioSources();
+      fetchSourceKinds();
+      break;
+    case 'InputVolumeChanged':
+      updateAudioVolume(ev.eventData);
+      break;
+    case 'InputMuteStateChanged':
+      updateAudioMute(ev.eventData);
+      break;
+    case 'InputVolumeMeters':
+      updateAudioMeters(ev.eventData);
+      break;
+  }
+}
+
+function sendRaw(obj) {
+  if (state.ws && state.ws.readyState === 1) state.ws.send(JSON.stringify(obj));
+}
+
+function sendRequest(type, data={}) {
+  return new Promise(resolve => {
+    const id = String(msgId++);
+    const timer = setTimeout(() => {
+      if (pendingReqs[id]) {
+        delete pendingReqs[id];
+        resolve({ requestStatus: { result: false, code: 408, comment: `${type} timed out` } });
+      }
+    }, 8000);
+    pendingReqs[id] = response => {
+      clearTimeout(timer);
+      resolve(response);
+    };
+    sendRaw({ op: 6, d: { requestType: type, requestId: id, requestData: data }});
+  });
+}
+
+async function onConnect() {
+  state.connected = true;
+  document.getElementById('connect-modal').classList.add('hidden');
+  document.getElementById('conn-btn').className = 'top-btn connected';
+  document.getElementById('conn-btn').textContent = '✓ CONNECTED';
+  showToast('Connected to OBS', 'ok');
+  await fetchAll();
+}
+
+function onDisconnect() {
+  state.connected = false;
+  state.streaming = false; state.recording = false;
+  if (state.previewLoop) { clearInterval(state.previewLoop); state.previewLoop = null; }
+  if (state.audioMeterLoop) { clearInterval(state.audioMeterLoop); state.audioMeterLoop = null; }
+  if (statsInterval) { clearInterval(statsInterval); statsInterval = null; }
+  document.getElementById('conn-btn').className = 'top-btn connect';
+  document.getElementById('conn-btn').textContent = '⚡ CONNECT OBS';
+  updateLiveIndicator(false); updateRecIndicator(false);
+  showToast('Disconnected from OBS', 'err');
+  renderAllPanels();
+}
+
+async function fetchAll() {
+  await fetchVersion();
+  await fetchScenes();
+  await fetchStreamStatus();
+  await fetchRecordStatus();
+  await fetchVirtualCamStatus();
+  await fetchStudioMode();
+  await fetchSourceKinds();
+  await fetchAudioSources();
+  await fetchStats();
+  await fetchSources();
+  startStatsLoop();
+  startPreviewLoop();
+  startAudioMeterLoop();
+}
+
+async function fetchVersion() {
+  const r = await sendRequest('GetVersion');
+  if (r.requestStatus.result) {
+    state.obsVersion = r.responseData.obsVersion || '';
+  }
+}
+
+async function fetchScenes() {
+  const r = await sendRequest('GetSceneList');
+  if (r.requestStatus.result) {
+    state.scenes = [...r.responseData.scenes].reverse();
+    state.currentScene = r.responseData.currentProgramSceneName;
+    state.previewScene = r.responseData.currentPreviewSceneName || '';
+    if (!state.editScene || !state.scenes.some(scene => scene.sceneName === state.editScene)) {
+      state.editScene = state.previewScene || state.currentScene || state.scenes[0]?.sceneName || '';
+    }
+    renderScenesPanel();
+    renderSourcesPanel();
+    updatePreviewSceneLabels();
+    queuePreviewRefresh();
+  }
+}
+
+async function fetchStreamStatus() {
+  const r = await sendRequest('GetStreamStatus');
+  if (r.requestStatus.result) { state.streaming = r.responseData.outputActive; updateStreamUI(); }
+}
+
+async function fetchRecordStatus() {
+  const r = await sendRequest('GetRecordStatus');
+  if (r.requestStatus.result) { state.recording = r.responseData.outputActive; updateRecordUI(); }
+}
+
+async function fetchVirtualCamStatus() {
+  const r = await sendRequest('GetVirtualCamStatus');
+  if (r.requestStatus.result) { state.virtualCam = r.responseData.outputActive; }
+}
+
+async function fetchStudioMode() {
+  const r = await sendRequest('GetStudioModeEnabled');
+  if (r.requestStatus.result) {
+    state.studioMode = r.responseData.studioModeEnabled;
+    renderStreamPanel();
+    renderPvwPanel();
+    updatePreviewSceneLabels();
+  }
+}
+
+async function fetchSourceKinds() {
+  const r = await sendRequest('GetInputKindList');
+  if (r.requestStatus.result) {
+    state.sourceKinds = (r.responseData.inputKinds || []).sort((a, b) => a.localeCompare(b));
+  }
+}
+
+async function fetchAudioSources() {
+  const r = await sendRequest('GetInputList');
+  if (!r.requestStatus.result) return;
+  const specialR = await sendRequest('GetSpecialInputs');
+  const specialNames = new Set();
+  if (specialR.requestStatus.result && specialR.responseData) {
+    Object.values(specialR.responseData).filter(Boolean).forEach(name => specialNames.add(name));
+  }
+  const inputs = r.responseData.inputs;
+  state.audioSources = [];
+  for (const inp of inputs) {
+    if (!isLikelyAudioInput(inp, specialNames)) continue;
+    const volR = await sendRequest('GetInputVolume', { inputName: inp.inputName });
+    if (!volR.requestStatus.result) continue;
+    const muteR = await sendRequest('GetInputMute', { inputName: inp.inputName });
+    state.audioSources.push({
+      name: inp.inputName,
+      kind: inp.inputKind,
+      volume: volR.responseData.inputVolumeMul ?? 1,
+      muted: muteR.requestStatus.result ? muteR.responseData.inputMuted : false,
+      meter: 0
+    });
+  }
+  renderAudioPanel();
+}
+
+function isLikelyAudioInput(input, specialNames) {
+  const kind = (input.inputKind || '').toLowerCase();
+  return specialNames.has(input.inputName)
+    || /audio|wasapi|coreaudio|pulse|alsa|jack|ffmpeg|vlc|browser|dshow/.test(kind);
+}
+
+async function fetchSources() {
+  if (!state.editScene) return;
+  const r = await sendRequest('GetSceneItemList', { sceneName: state.editScene });
+  if (r.requestStatus.result) {
+    state.sources = r.responseData.sceneItems.map(i => ({
+      sourceName: i.sourceName, sourceType: i.sourceType || i.sourceKind || 'source',
+      sceneItemId: i.sceneItemId, sceneItemEnabled: i.sceneItemEnabled
+    })).reverse();
+    renderSourcesPanel();
+  }
+}
+
+async function fetchStats() {
+  const r = await sendRequest('GetStats');
+  if (r.requestStatus.result) {
+    const d = r.responseData;
+    state.stats = {
+      fps: d.activeFps || 0, cpuUsage: d.cpuUsage || 0, memoryUsage: d.memoryUsage || 0,
+      kbitsPerSec: d.outputSkippedFrames ? 0 : (state.streaming ? 4500 : 0),
+      renderSkipped: d.renderSkippedFrames || 0, outputSkipped: d.outputSkippedFrames || 0
+    };
+    renderStatsPanel();
+  }
+}
+
+let statsInterval;
+function startStatsLoop() {
+  if (statsInterval) clearInterval(statsInterval);
+  statsInterval = setInterval(() => { if (state.connected) fetchStats(); }, 2000);
+}
+
+// ============================================================
+// CONTROLS
+// ============================================================
+async function switchScene(name) {
+  if (!state.connected) { showToast('Not connected', 'err'); return; }
+  if (state.studioMode) {
+    await sendRequest('SetCurrentPreviewScene', { sceneName: name });
+    state.previewScene = name;
+  } else {
+    await sendRequest('SetCurrentProgramScene', { sceneName: name });
+    state.currentScene = name;
+  }
+  renderScenesPanel();
+  updatePreviewSceneLabels();
+  queuePreviewRefresh();
+}
+
+async function toggleStream() {
+  if (!state.connected) { showToast('Not connected', 'err'); return; }
+  if (state.streaming) {
+    if (!confirm('Stop the live stream?')) return;
+    await sendRequest('StopStream');
+  } else {
+    await sendRequest('StartStream');
+  }
+}
+
+async function toggleRecord() {
+  if (!state.connected) { showToast('Not connected', 'err'); return; }
+  if (state.recording) {
+    await sendRequest('StopRecord');
+  } else {
+    await sendRequest('StartRecord');
+  }
+}
+
+async function toggleReplayBuffer() {
+  if (!state.connected) { showToast('Not connected', 'err'); return; }
+  if (state.replayBuffer) {
+    await sendRequest('StopReplayBuffer');
+    state.replayBuffer = false;
+  } else {
+    await sendRequest('StartReplayBuffer');
+    state.replayBuffer = true;
+  }
+  renderStreamPanel();
+}
+
+async function saveReplayBuffer() {
+  if (!state.connected || !state.replayBuffer) { showToast('Replay buffer not active', 'err'); return; }
+  await sendRequest('SaveReplayBuffer');
+  showToast('Replay saved!', 'ok');
+}
+
+async function toggleVirtualCam() {
+  if (!state.connected) { showToast('Not connected', 'err'); return; }
+  if (state.virtualCam) await sendRequest('StopVirtualCam');
+  else await sendRequest('StartVirtualCam');
+}
+
+async function toggleStudioMode() {
+  if (!state.connected) { showToast('Not connected', 'err'); return; }
+  await sendRequest('SetStudioModeEnabled', { studioModeEnabled: !state.studioMode });
+  state.studioMode = !state.studioMode;
+  renderStreamPanel();
+  renderPvwPanel();
+  await fetchScenes();
+  showToast(state.studioMode ? 'Studio Mode ON' : 'Studio Mode OFF', 'info');
+}
+
+async function triggerTransition() {
+  if (!state.connected) { showToast('Not connected', 'err'); return; }
+  if (state.studioMode) {
+    await sendRequest('TriggerStudioModeTransition');
+    showToast('Transition triggered', 'ok');
+  } else {
+    showToast('Enable Studio Mode first', 'info');
+  }
+}
+
+function setTransition(name) {
+  state.transition.name = name;
+  if (state.connected) sendRequest('SetCurrentSceneTransition', { transitionName: name });
+  renderTransitionsPanel();
+}
+
+function setTransDuration(val) {
+  state.transition.duration = parseInt(val);
+  document.getElementById('trans-dur-val').textContent = val + 'ms';
+  if (state.connected) sendRequest('SetCurrentSceneTransitionDuration', { transitionDuration: parseInt(val) });
+}
+
+async function toggleMute(name, idx) {
+  if (!state.connected) return;
+  const r = await sendRequest('ToggleInputMute', { inputName: name });
+  if (r.requestStatus.result) {
+    state.audioSources[idx].muted = r.responseData.inputMuted;
+    renderAudioPanel();
+  }
+}
+
+async function setVolume(name, val, idx) {
+  if (!state.connected) return;
+  const mult = val / 100;
+  state.audioSources[idx].volume = mult;
+  document.getElementById('vol-'+idx).textContent = val + '%';
+  const r = await sendRequest('SetInputVolume', { inputName: name, inputVolumeMul: mult });
+  if (!r.requestStatus.result) showToast(r.requestStatus.comment || 'Volume update failed', 'err');
+}
+
+async function toggleSource(id, name, btn) {
+  if (!state.connected) return;
+  const src = state.sources.find(s => s.sceneItemId == id);
+  if (!src) return;
+  const newState = !src.sceneItemEnabled;
+  src.sceneItemEnabled = newState;
+  await sendRequest('SetSceneItemEnabled', {
+    sceneName: state.editScene, sceneItemId: parseInt(id), sceneItemEnabled: newState
+  });
+  btn.textContent = newState ? '●' : '○';
+  btn.classList.toggle('hidden', !newState);
+  queuePreviewRefresh();
+}
+
+async function openProjector() {
+  if (!state.connected) { showToast('Not connected', 'err'); return; }
+  const videoMixType = state.studioMode
+    ? 'OBS_WEBSOCKET_VIDEO_MIX_TYPE_PREVIEW'
+    : 'OBS_WEBSOCKET_VIDEO_MIX_TYPE_PROGRAM';
+  const r = await sendRequest('OpenVideoMixProjector', { videoMixType });
+  if (!r.requestStatus.result) showToast(r.requestStatus.comment || 'Projector request failed', 'err');
+}
+
+function startPreviewLoop() {
+  if (state.previewLoop) clearInterval(state.previewLoop);
+  refreshPreviewImages();
+  state.previewLoop = setInterval(refreshPreviewImages, 1000);
+}
+
+function queuePreviewRefresh() {
+  if (!state.connected) return;
+  clearTimeout(state.previewRefreshTimer);
+  state.previewRefreshTimer = setTimeout(refreshPreviewImages, 120);
+}
+
+async function refreshPreviewImages() {
+  if (!state.connected || state.previewBusy) return;
+  state.previewBusy = true;
+  try {
+    const pvwScene = state.studioMode && state.previewScene ? state.previewScene : state.currentScene;
+    await Promise.all([
+      updatePreviewFrame('pgm-preview', 'pgm', 'PGM', state.currentScene, 'Program'),
+      updatePreviewFrame('pvw-preview', 'pvw', 'PVW', pvwScene, state.studioMode ? 'Preview' : 'Studio off')
+    ]);
+  } finally {
+    state.previewBusy = false;
+  }
+}
+
+async function updatePreviewFrame(containerId, labelClass, label, sceneName, modeLabel) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  if (!sceneName) {
+    setPreviewPlaceholder(containerId, labelClass, label, 'NO SCENE', modeLabel);
+    return;
+  }
+  const r = await sendRequest('GetSourceScreenshot', {
+    sourceName: sceneName,
+    imageFormat: 'png',
+    imageWidth: 640,
+    imageHeight: 360,
+    imageCompressionQuality: 75
+  });
+  if (!r.requestStatus.result || !r.responseData?.imageData) {
+    setPreviewPlaceholder(containerId, labelClass, label, 'FRAME UNAVAILABLE', r.requestStatus.comment || sceneName);
+    return;
+  }
+  const stamp = new Date().toLocaleTimeString();
+  el.innerHTML = `
+    <img alt="${escapeHtml(label)} frame" src="${normalizeImageData(r.responseData.imageData, 'png')}">
+    <span class="preview-label ${labelClass}">${label}</span>
+    <span class="preview-stamp">${escapeHtml(modeLabel)} · ${escapeHtml(stamp)}</span>
+  `;
+}
+
+function setPreviewPlaceholder(containerId, labelClass, label, title, detail) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  el.innerHTML = `
+    <div class="preview-placeholder">${escapeHtml(title)}<br><br>${escapeHtml(detail || '')}</div>
+    <span class="preview-label ${labelClass}">${label}</span>
+    <span class="preview-stamp">--</span>
+  `;
+}
+
+function normalizeImageData(imageData, format) {
+  if (!imageData) return '';
+  return imageData.startsWith('data:') ? imageData : `data:image/${format};base64,${imageData}`;
+}
+
+function updatePreviewSceneLabels() {
+  const pgm = document.getElementById('pgm-scene-name');
+  const pvw = document.getElementById('pvw-scene-name');
+  if (pgm) pgm.textContent = state.currentScene || '—';
+  if (pvw) pvw.textContent = state.previewScene || (state.studioMode ? '—' : state.currentScene || '—');
+}
+
+function startAudioMeterLoop() {
+  if (state.audioMeterLoop) clearInterval(state.audioMeterLoop);
+  state.audioMeterLoop = setInterval(decayAudioMeters, 120);
+}
+
+function closeModal(id) {
+  const el = document.getElementById(id);
+  if (el) el.classList.add('hidden');
+}
+
+function openSceneModal() {
+  if (!state.connected) { showToast('Not connected', 'err'); return; }
+  document.getElementById('scene-err').textContent = '';
+  document.getElementById('new-scene-name').value = '';
+  document.getElementById('scene-modal').classList.remove('hidden');
+  document.getElementById('new-scene-name').focus();
+}
+
+async function createSceneFromModal() {
+  const input = document.getElementById('new-scene-name');
+  const err = document.getElementById('scene-err');
+  const name = input.value.trim();
+  if (!name) { err.textContent = 'Scene name is required.'; return; }
+  const r = await sendRequest('CreateScene', { sceneName: name });
+  if (!r.requestStatus.result) { err.textContent = r.requestStatus.comment || 'Could not create scene.'; return; }
+  state.editScene = name;
+  closeModal('scene-modal');
+  await fetchScenes();
+  await fetchSources();
+  showToast(`Created ${name}`, 'ok');
+}
+
+function setEditScene(name) {
+  state.editScene = name;
+  fetchSources();
+  renderScenesPanel();
+}
+
+function openAddSourceModal() {
+  if (!state.connected) { showToast('Not connected', 'err'); return; }
+  if (!state.editScene) { showToast('Choose an edit scene first', 'err'); return; }
+  populateSceneSelect('new-source-scene', state.editScene);
+  populateSourceKindSelect();
+  document.getElementById('source-err').textContent = '';
+  document.getElementById('new-source-name').value = '';
+  document.getElementById('new-source-visible').value = 'true';
+  document.getElementById('new-source-settings').value = '{}';
+  renderNewSourceFields();
+  document.getElementById('source-modal').classList.remove('hidden');
+  document.getElementById('new-source-name').focus();
+}
+
+function populateSceneSelect(id, selected) {
+  const select = document.getElementById(id);
+  if (!select) return;
+  select.innerHTML = state.scenes.map(scene =>
+    `<option value="${escapeHtml(scene.sceneName)}" ${scene.sceneName === selected ? 'selected':''}>${escapeHtml(scene.sceneName)}</option>`
+  ).join('');
+}
+
+function populateSourceKindSelect() {
+  const select = document.getElementById('new-source-kind');
+  const fallback = ['browser_source', 'text_gdiplus_v3', 'text_gdiplus', 'image_source', 'ffmpeg_source', 'dshow_input', 'wasapi_input_capture', 'wasapi_output_capture', 'color_source_v3', 'color_source'];
+  const kinds = state.sourceKinds.length ? state.sourceKinds : fallback;
+  const preferred = kinds.find(k => k.includes('browser')) || kinds[0] || '';
+  select.innerHTML = kinds.map(kind =>
+    `<option value="${escapeHtml(kind)}" ${kind === preferred ? 'selected':''}>${escapeHtml(kind)}</option>`
+  ).join('');
+}
+
+function renderNewSourceFields() {
+  const kind = document.getElementById('new-source-kind')?.value || '';
+  const wrap = document.getElementById('new-source-fields');
+  if (!wrap) return;
+  if (kind.includes('browser')) {
+    wrap.innerHTML = `
+      <div class="form-grid">
+        <div class="form-field"><div class="field-label">URL</div><input class="mini-input" data-setting-key="url" type="text" placeholder="https://example.com/overlay"></div>
+        <div class="form-field"><div class="field-label">Width</div><input class="mini-input" data-setting-key="width" data-setting-type="number" type="number" value="1920"></div>
+        <div class="form-field"><div class="field-label">Height</div><input class="mini-input" data-setting-key="height" data-setting-type="number" type="number" value="1080"></div>
+      </div>`;
+  } else if (kind.includes('text')) {
+    wrap.innerHTML = `
+      <div class="form-grid full">
+        <div class="form-field"><div class="field-label">Text</div><textarea class="mini-textarea" data-setting-key="text" placeholder="Lower third, callout, or alert text"></textarea></div>
+      </div>`;
+  } else if (kind.includes('image')) {
+    wrap.innerHTML = `
+      <div class="form-grid full">
+        <div class="form-field"><div class="field-label">Image file path</div><input class="mini-input" data-setting-key="file" type="text" placeholder="C:\\\\Assets\\\\sponsor.png"></div>
+      </div>`;
+  } else if (kind.includes('ffmpeg') || kind.includes('media')) {
+    wrap.innerHTML = `
+      <div class="form-grid full">
+        <div class="form-field"><div class="field-label">Media file path</div><input class="mini-input" data-setting-key="local_file" type="text" placeholder="C:\\\\Assets\\\\clip.mp4"></div>
+      </div>`;
+  } else {
+    wrap.innerHTML = `<div class="form-help">No quick fields for this kind yet. Use the JSON box below for native OBS settings.</div>`;
+  }
+}
+
+function getQuickSettings() {
+  const settings = {};
+  document.querySelectorAll('#new-source-fields [data-setting-key]').forEach(field => {
+    const key = field.dataset.settingKey;
+    if (!key || field.value === '') return;
+    settings[key] = field.dataset.settingType === 'number' ? Number(field.value) : field.value;
+  });
+  return settings;
+}
+
+async function createSourceFromModal() {
+  const err = document.getElementById('source-err');
+  const sceneName = document.getElementById('new-source-scene').value;
+  const inputName = document.getElementById('new-source-name').value.trim();
+  const inputKind = document.getElementById('new-source-kind').value;
+  const sceneItemEnabled = document.getElementById('new-source-visible').value === 'true';
+  if (!sceneName || !inputName || !inputKind) { err.textContent = 'Scene, source name, and source kind are required.'; return; }
+  let extra = {};
+  try {
+    extra = JSON.parse(document.getElementById('new-source-settings').value || '{}');
+  } catch (e) {
+    err.textContent = 'Extra settings JSON is invalid.';
+    return;
+  }
+  const inputSettings = { ...getQuickSettings(), ...extra };
+  const r = await sendRequest('CreateInput', { sceneName, inputName, inputKind, inputSettings, sceneItemEnabled });
+  if (!r.requestStatus.result) { err.textContent = r.requestStatus.comment || 'Could not create source.'; return; }
+  state.editScene = sceneName;
+  closeModal('source-modal');
+  await fetchSources();
+  await fetchAudioSources();
+  queuePreviewRefresh();
+  showToast(`Added ${inputName}`, 'ok');
+}
+
+async function openSourceEditor(sourceName, sceneItemId) {
+  if (!state.connected) return;
+  const modal = document.getElementById('source-editor-modal');
+  document.getElementById('editor-title').textContent = sourceName;
+  document.getElementById('editor-subtitle').textContent = `${state.editScene} · scene item ${sceneItemId}`;
+  document.getElementById('editor-err').textContent = 'Loading source data...';
+  document.getElementById('edit-source-settings').value = '{}';
+  document.getElementById('edit-source-transform').value = '{}';
+  modal.classList.remove('hidden');
+  const [settingsR, transformR] = await Promise.all([
+    sendRequest('GetInputSettings', { inputName: sourceName }),
+    sendRequest('GetSceneItemTransform', { sceneName: state.editScene, sceneItemId: parseInt(sceneItemId) })
+  ]);
+  state.editor = { inputName: sourceName, sceneName: state.editScene, sceneItemId: parseInt(sceneItemId) };
+  if (settingsR.requestStatus.result) {
+    document.getElementById('edit-source-settings').value = prettyJson(settingsR.responseData.inputSettings);
+    state.editor.inputKind = settingsR.responseData.inputKind;
+    document.getElementById('editor-err').textContent = '';
+  } else {
+    document.getElementById('editor-err').textContent = settingsR.requestStatus.comment || 'Input settings are not available for this source type.';
+  }
+  if (transformR.requestStatus.result) {
+    document.getElementById('edit-source-transform').value = prettyJson(transformR.responseData.sceneItemTransform);
+  }
+}
+
+async function applySourceSettings() {
+  if (!state.editor) return;
+  const err = document.getElementById('editor-err');
+  let inputSettings;
+  try {
+    inputSettings = JSON.parse(document.getElementById('edit-source-settings').value || '{}');
+  } catch (e) {
+    err.textContent = 'Input settings JSON is invalid.';
+    return;
+  }
+  const r = await sendRequest('SetInputSettings', { inputName: state.editor.inputName, inputSettings, overlay: true });
+  if (!r.requestStatus.result) { err.textContent = r.requestStatus.comment || 'Could not apply input settings.'; return; }
+  err.textContent = '';
+  queuePreviewRefresh();
+  showToast('Source settings updated', 'ok');
+}
+
+async function applySourceTransform() {
+  if (!state.editor) return;
+  const err = document.getElementById('editor-err');
+  let sceneItemTransform;
+  try {
+    sceneItemTransform = JSON.parse(document.getElementById('edit-source-transform').value || '{}');
+  } catch (e) {
+    err.textContent = 'Transform JSON is invalid.';
+    return;
+  }
+  const r = await sendRequest('SetSceneItemTransform', {
+    sceneName: state.editor.sceneName,
+    sceneItemId: state.editor.sceneItemId,
+    sceneItemTransform
+  });
+  if (!r.requestStatus.result) { err.textContent = r.requestStatus.comment || 'Could not apply transform.'; return; }
+  err.textContent = '';
+  await fetchSources();
+  queuePreviewRefresh();
+  showToast('Transform updated', 'ok');
+}
+
+function updateStreamUI() {
+  updateLiveIndicator(state.streaming);
+  renderStreamPanel();
+}
+function updateRecordUI() {
+  updateRecIndicator(state.recording);
+  renderStreamPanel();
+}
+function updateLiveIndicator(live) {
+  document.getElementById('dot-live').classList.toggle('live', live);
+  document.getElementById('lbl-live').textContent = live ? 'ON AIR' : 'OFF AIR';
+  document.getElementById('lbl-live').style.color = live ? 'var(--live)' : '';
+}
+function updateRecIndicator(rec) {
+  document.getElementById('dot-rec').classList.toggle('rec', rec);
+  document.getElementById('lbl-rec').textContent = rec ? '● REC' : 'NOT REC';
+  document.getElementById('lbl-rec').style.color = rec ? 'var(--accent)' : '';
+}
+function updateAudioVolume(data) {
+  const src = state.audioSources.find(s => s.name === data.inputName);
+  if (src) {
+    src.volume = data.inputVolumeMul ?? src.volume;
+    const idx = state.audioSources.indexOf(src);
+    const vol = Math.round((src.volume || 1) * 100);
+    const volEl = document.getElementById('vol-'+idx);
+    const slider = document.querySelectorAll('.vol-slider')[idx];
+    if (volEl) volEl.textContent = vol + '%';
+    if (slider) slider.value = vol;
+  }
+}
+
+function updateAudioMute(data) {
+  const src = state.audioSources.find(s => s.name === data.inputName);
+  if (!src) return;
+  src.muted = data.inputMuted;
+  const idx = state.audioSources.indexOf(src);
+  const btn = document.getElementById('mute-'+idx);
+  if (btn) {
+    btn.textContent = src.muted ? '🔇' : '🔊';
+    btn.classList.toggle('muted', src.muted);
+  }
+  updateMeterDom(idx, src.muted ? 0 : src.meter);
+}
+
+function updateAudioMeters(data) {
+  if (!data.inputs) return;
+  let added = false;
+  data.inputs.forEach(input => {
+    let idx = state.audioSources.findIndex(src => src.name === input.inputName);
+    if (idx < 0) {
+      state.audioSources.push({ name: input.inputName, kind: 'active audio', volume: 1, muted: false, meter: 0 });
+      idx = state.audioSources.length - 1;
+      added = true;
+    }
+    const src = state.audioSources[idx];
+    src.meter = readMeterPercent(input);
+    updateMeterDom(idx, src.muted ? 0 : src.meter);
+  });
+  if (added) renderAudioPanel();
+}
+
+function readMeterPercent(input) {
+  const levels = input.inputLevelsMul || input.inputLevelsMagnitude || input.inputLevelsDb || [];
+  const flat = levels.flat ? levels.flat(3) : [].concat(...levels);
+  const nums = flat.filter(v => typeof v === 'number' && Number.isFinite(v));
+  if (nums.length === 0) return 0;
+  const peak = Math.max(...nums);
+  if (peak <= 0 && levels === input.inputLevelsDb) return Math.max(0, Math.min(100, ((peak + 60) / 60) * 100));
+  return Math.max(0, Math.min(100, peak * 100));
+}
+
+function updateMeterDom(idx, value) {
+  const meter = document.getElementById('meter-'+idx);
+  if (meter) meter.style.width = Math.max(0, Math.min(100, value || 0)) + '%';
+}
+
+// ============================================================
+// OBS auth helper
+// ============================================================
+async function computeAuth(pass, salt, challenge) {
+  const enc = new TextEncoder();
+  const secret = new Uint8Array(await crypto.subtle.digest('SHA-256', enc.encode(pass+salt)));
+  const secretB64 = btoa(String.fromCharCode(...secret));
+  const combined = new Uint8Array(await crypto.subtle.digest('SHA-256', enc.encode(secretB64+challenge)));
+  return btoa(String.fromCharCode(...combined));
+}
+
+function handleMessage(msg, pass='') {
+  if (msg.op === 0) {
+    const auth = msg.d.authentication;
+    if (auth) {
+      computeAuth(pass, auth.salt, auth.challenge).then(response => {
+        sendRaw({ op: 1, d: { rpcVersion: 1, authentication: response, eventSubscriptions: OBS_EVENT_SUBSCRIPTIONS }});
+      });
+    } else {
+      sendRaw({ op: 1, d: { rpcVersion: 1, eventSubscriptions: OBS_EVENT_SUBSCRIPTIONS }});
+    }
+  } else if (msg.op === 2) {
+    onConnect();
+  } else if (msg.op === 5) {
+    handleEvent(msg.d);
+  } else if (msg.op === 7) {
+    const id = msg.d.requestId;
+    if (pendingReqs[id]) { pendingReqs[id](msg.d); delete pendingReqs[id]; }
+  }
+}
+
+function slugify(s) { return s.replace(/[^a-zA-Z0-9]/g,'-'); }
+
+// ============================================================
+// UTILITIES
+// ============================================================
+let toastTimer;
+function showToast(msg, type='info') {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = 'show ' + type;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.className = '', 2500);
+}
+
+// Clock
+function updateClock() {
+  const now = new Date();
+  const t = now.toTimeString().split(' ')[0];
+  document.getElementById('clock').textContent = t;
+}
+setInterval(updateClock, 1000); updateClock();
+
+// Timecode
+let startTime = null;
+function updateTimecode() {
+  if (state.streaming || state.recording) {
+    if (!startTime) startTime = Date.now();
+    const elapsed = Date.now() - startTime;
+    const h = Math.floor(elapsed/3600000).toString().padStart(2,'0');
+    const m = Math.floor((elapsed%3600000)/60000).toString().padStart(2,'0');
+    const s = Math.floor((elapsed%60000)/1000).toString().padStart(2,'0');
+    const f = Math.floor((elapsed%1000)/33).toString().padStart(2,'0');
+    document.getElementById('timecode').textContent = `${h}:${m}:${s}:${f}`;
+  } else {
+    startTime = null;
+    document.getElementById('timecode').textContent = '--:--:--';
+  }
+}
+setInterval(updateTimecode, 33);
+
+// Keyboard shortcuts
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;
+  if (e.key >= '1' && e.key <= '9') {
+    const idx = parseInt(e.key) - 1;
+    if (state.scenes[idx]) switchScene(state.scenes[idx].sceneName);
+  }
+  if (e.key === 't' || e.key === 'T') triggerTransition();
+  if (e.key === 'F1') toggleStream();
+  if (e.key === 'F2') toggleRecord();
+});
+
+// ============================================================
+// BOOT
+// ============================================================
+createPanels();
+</script>
+</body>
+</html>
